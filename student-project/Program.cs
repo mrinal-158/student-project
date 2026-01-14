@@ -1,8 +1,20 @@
+using Microsoft.EntityFrameworkCore;
+using student_project.Data;
+using student_project.Models;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// Configure PostgreSQL connection
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+builder.Services.AddDbContext<StudentDb>(options =>
+    options.UseNpgsql(connectionString));
 
 var app = builder.Build();
 
@@ -10,32 +22,41 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
+//CRUD Endpoints for Student entity
+app.MapGet("/students", async (StudentDb db) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    var students = await db.Students.ToListAsync();
+    return Results.Ok(students);
+});
 
-app.MapGet("/weatherforecast", () =>
+app.MapPost("/students", async (Student student, StudentDb db) =>
 {
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    db.Students.Add(student);
+    await db.SaveChangesAsync();
+    return Results.Created($"/students/{student.Id}", student);
+});
+    
+app.MapDelete("/students/{id}", async (int id, StudentDb db) =>
+{
+    if(await db.Students.FindAsync(id) is Student student)
+    {
+        db.Students.Remove(student);
+        await db.SaveChangesAsync();
+        return Results.Ok(new
+        {
+            student = student,
+            message = $"Student with ID {id} has been removed successfully!"
+        });
+    }
+    return Results.NotFound("This record is not found!");
+});
+
 
 app.Run();
 
-internal record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
